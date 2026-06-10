@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ENEM Mesclador</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <h1>ENEM Mesclador</h1>
+      <p>Simulados do 1º dia mesclando questões de diferentes anos</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <h2>Configurar simulado</h2>
+      <form id="mix-form">
+        <div class="field">
+          <label>Anos (selecione 2 ou mais)</label>
+          <div id="years-list" class="years-grid"></div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="caderno">Caderno</label>
+            <select id="caderno" name="caderno">
+              <option value="azul">Azul</option>
+              <option value="amarelo">Amarelo</option>
+              <option value="branco">Branco</option>
+              <option value="verde">Verde</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="language">Idioma (Q1–5)</label>
+            <select id="language" name="language">
+              <option value="ingles">Inglês</option>
+              <option value="espanhol">Espanhol</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="generate-btn">
+            Gerar simulado
+          </button>
+          <button type="button" class="btn btn-secondary" id="toggle-answers-btn" disabled>
+            Mostrar gabarito
+          </button>
+          <a id="export-pdf-btn" class="btn btn-secondary disabled" href="#" download>
+            Exportar PDF
+          </a>
+        </div>
+      </form>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section id="exam-meta" class="exam-meta hidden"></section>
+    <section id="questions" class="questions"></section>
+  </main>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>
