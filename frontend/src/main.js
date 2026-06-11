@@ -1,32 +1,51 @@
+// ─── Estado Global ────────────────────────────────────────────────────────────
 const state = {
   currentExam: null,
   showAnswers: false,
   answers: {},
+  examFinished: false,
+  result: null,
 };
 
-const mixForm = document.getElementById("mix-form");
-const statusEl = document.getElementById("status");
-const questionsEl = document.getElementById("questions");
-const examMetaEl = document.getElementById("exam-meta");
+// ─── Elementos DOM ────────────────────────────────────────────────────────────
+const mixForm          = document.getElementById("mix-form");
+const statusEl         = document.getElementById("status");
+const questionsEl      = document.getElementById("questions");
+const examMetaEl       = document.getElementById("exam-meta");
 const toggleAnswersBtn = document.getElementById("toggle-answers-btn");
-const exportPdfBtn = document.getElementById("export-pdf-btn");
-const generateBtn = document.getElementById("generate-btn");
-const daySelect = document.getElementById("day");
-const languageField = document.getElementById("language-field");
+const exportPdfBtn     = document.getElementById("export-pdf-btn");
+const generateBtn      = document.getElementById("generate-btn");
+const daySelect        = document.getElementById("day");
+const languageField    = document.getElementById("language-field");
+const finishBtn        = document.getElementById("finish-btn");
+const finishFooter     = document.getElementById("finish-footer");
+const progressContainer = document.getElementById("progress-container");
+const progressFill     = document.getElementById("progress-fill");
+const progressText     = document.getElementById("progress-text");
+const confirmModal     = document.getElementById("confirm-modal");
+const modalTitle       = document.getElementById("modal-title");
+const modalMessage     = document.getElementById("modal-message");
+const modalCancelBtn   = document.getElementById("modal-cancel-btn");
+const modalConfirmBtn  = document.getElementById("modal-confirm-btn");
 
+let pendingConfirm = null;
+
+// ─── Utilitários ──────────────────────────────────────────────────────────────
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("error", isError);
 }
 
+function updateFinishFooterVisibility() {
+  finishFooter.classList.toggle("hidden", !state.currentExam || state.examFinished);
+}
+
 function renderMarkdown(text) {
   if (!text) return "";
-
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
@@ -34,20 +53,40 @@ function renderMarkdown(text) {
   return html;
 }
 
-function getStudentId() {
-  const storageKey = "enem-student-id";
-  let studentId = localStorage.getItem(storageKey);
-
-  if (!studentId) {
-    studentId = crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    localStorage.setItem(storageKey, studentId);
-  }
-
-  return studentId;
+function showConfirmModal(title, message) {
+  return new Promise((resolve) => {
+    pendingConfirm = resolve;
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+    confirmModal.classList.remove("hidden");
+    modalConfirmBtn.focus();
+  });
 }
 
+function closeConfirmModal(result = false) {
+  if (!pendingConfirm) return;
+
+  const resolve = pendingConfirm;
+  pendingConfirm = null;
+  confirmModal.classList.add("hidden");
+
+  resolve(result);
+}
+
+// ─── Identificação do aluno ────────────────────────────────────────────────
+function getStudentId() {
+  const key = "enem-student-id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+// ─── Persistência de respostas ─────────────────────────────────────────────
 function getAnswersStorageKey(examId) {
   return `enem-answers-${examId}`;
 }
@@ -61,8 +100,8 @@ function loadSavedAnswers(examId) {
 }
 
 function saveAnswer(questionIndex, letter) {
-  if (!state.currentExam) return;
-
+  // Bloqueia alteração após finalizar
+  if (!state.currentExam || state.examFinished) return;
   state.answers[String(questionIndex)] = letter;
   localStorage.setItem(
     getAnswersStorageKey(state.currentExam.id),
@@ -70,36 +109,83 @@ function saveAnswer(questionIndex, letter) {
   );
 }
 
+// ─── Barra de progresso horizontal ────────────────────────────────────────
+function updateProgress() {
+  if (!state.currentExam) return;
+  const total    = state.currentExam.questions.length;
+  const answered = Object.keys(state.answers).length;
+  const pct      = total > 0 ? Math.round((answered / total) * 100) : 0;
+  progressFill.style.width = `${pct}%`;
+  progressText.textContent = `${answered}/${total} respondidas`;
+}
+
+// ─── Mapeamento discipline → área ENEM ────────────────────────────────────
+function getAreaFromDiscipline(discipline) {
+  if (!discipline) return "Geral";
+  const d = discipline.toLowerCase();
+  if (
+    d.includes("linguagens") || d.includes("portugu") ||
+    d.includes("literatura") || d.includes("ingles") ||
+    d.includes("inglês")     || d.includes("espanhol") ||
+    d.includes("artes")      || d.includes("educação física")
+  ) return "Linguagens";
+  if (
+    d.includes("humanas") || d.includes("história") ||
+    d.includes("historia") || d.includes("geografia") ||
+    d.includes("filosofia") || d.includes("sociologia")
+  ) return "Ciências Humanas";
+  if (
+    d.includes("natureza") || d.includes("física") ||
+    d.includes("fisica")   || d.includes("química") ||
+    d.includes("quimica")  || d.includes("biologia")
+  ) return "Ciências da Natureza";
+  if (d.includes("matemática") || d.includes("matematica") || d.includes("math"))
+    return "Matemática";
+  if (d.includes("redação") || d.includes("redacao"))
+    return "Redação";
+  return "Geral";
+}
+
+// ─── Renderização do cabeçalho do simulado ─────────────────────────────────
 function renderExamMeta(exam) {
   examMetaEl.classList.remove("hidden");
-  const languageMeta = exam.day === 1 ? ` - Idioma ${exam.language}` : "";
+  const languageMeta = exam.day === 1 ? ` · Idioma: ${exam.language}` : "";
   examMetaEl.innerHTML = `
-    <strong>Simulado gerado</strong> - ID: ${exam.id}<br>
-    Dia ${exam.day}<br>
-    Anos sorteados: ${exam.years.join(" -> ")}<br>
-    Caderno ${exam.caderno}${languageMeta} - ${exam.questions.length} questoes
+    <strong>Simulado gerado</strong> &mdash; ID: ${exam.id}<br>
+    Dia ${exam.day} &nbsp;·&nbsp; Anos sorteados: ${exam.years.join(" → ")}<br>
+    Caderno ${exam.caderno}${languageMeta} &nbsp;·&nbsp; ${exam.questions.length} questões
   `;
 }
 
+// ─── Renderização das questões ─────────────────────────────────────────────
 function renderQuestions(exam) {
   questionsEl.innerHTML = exam.questions
     .map((question) => {
       const savedAnswer = state.answers[String(question.mixedIndex)];
       const alternatives = question.alternatives
         .map((alt) => {
-          const checked = savedAnswer === alt.letter ? "checked" : "";
+          const checked    = savedAnswer === alt.letter ? "checked" : "";
           const isSelected = savedAnswer === alt.letter ? "selected" : "";
-          const isCorrect = state.showAnswers && alt.isCorrect ? "correct" : "";
+          // Gabarito só após finalizar (proteção no JS, não apenas CSS)
+          const isCorrect  = (state.showAnswers && state.examFinished && alt.isCorrect)
+            ? "correct" : "";
+          // Resposta errada do aluno destacada em vermelho
+          const isWrong    = (state.showAnswers && state.examFinished &&
+                              savedAnswer === alt.letter && !alt.isCorrect)
+            ? "wrong" : "";
+          const disabled   = state.examFinished ? "disabled" : "";
+          const lockedClass = state.examFinished ? "locked" : "";
 
           return `
-            <li class="${isCorrect} ${isSelected}">
-              <label class="answer-option">
+            <li class="${[isCorrect, isSelected, isWrong].filter(Boolean).join(" ")}">
+              <label class="answer-option ${lockedClass}">
                 <input
                   type="radio"
                   name="question-${question.mixedIndex}"
                   value="${alt.letter}"
                   data-question-index="${question.mixedIndex}"
                   ${checked}
+                  ${disabled}
                 >
                 <span><strong>${alt.letter})</strong> ${renderMarkdown(alt.text)}</span>
               </label>
@@ -111,17 +197,15 @@ function renderQuestions(exam) {
       return `
         <article class="question-card" data-index="${question.mixedIndex}">
           <div class="question-header">
-            <h3>Questao ${question.mixedIndex}</h3>
-            <span class="question-origin">ENEM ${question.originalYear} - item ${question.originalIndex}</span>
+            <h3>Questão ${question.mixedIndex}</h3>
+            <span class="question-origin">ENEM ${question.originalYear} · item ${question.originalIndex}</span>
           </div>
           <div class="context">${renderMarkdown(question.context)}</div>
-          ${
-            question.alternativesIntroduction
-              ? `<div class="intro">${renderMarkdown(question.alternativesIntroduction)}</div>`
-              : ""
-          }
+          ${question.alternativesIntroduction
+            ? `<div class="intro">${renderMarkdown(question.alternativesIntroduction)}</div>`
+            : ""}
           <ul class="alternatives">${alternatives}</ul>
-          <span class="answer-badge ${state.showAnswers ? "" : "hidden"}">
+          <span class="answer-badge ${(state.showAnswers && state.examFinished) ? "" : "hidden"}">
             Gabarito: ${question.correctAlternative}
           </span>
         </article>
@@ -129,22 +213,44 @@ function renderQuestions(exam) {
     })
     .join("");
 
-  questionsEl.querySelectorAll('input[type="radio"]').forEach((input) => {
-    input.addEventListener("change", (event) => {
-      saveAnswer(event.target.dataset.questionIndex, event.target.value);
-      renderQuestions(exam);
+  // Registra eventos apenas enquanto o simulado não foi finalizado
+  if (!state.examFinished) {
+    questionsEl.querySelectorAll('input[type="radio"]').forEach((input) => {
+      input.addEventListener("change", (event) => {
+        saveAnswer(event.target.dataset.questionIndex, event.target.value);
+        updateProgress();
+        renderQuestions(exam);
+      });
     });
-  });
+  }
 }
 
+// ─── Geração do simulado ───────────────────────────────────────────────────
 async function generateMix(event) {
   event.preventDefault();
 
   const language = document.getElementById("language").value;
-  const day = Number(daySelect.value);
+  const day      = Number(daySelect.value);
 
-  generateBtn.disabled = true;
-  setStatus("Gerando simulado unico...");
+  if (state.currentExam && !state.examFinished) {
+    setStatus("Finalize o simulado atual antes de gerar um novo.");
+    return;
+  }
+  questionsEl.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+  
+  // Reseta estado completamente
+  state.examFinished = false;
+  state.showAnswers  = false;
+  state.result       = null;
+
+  updateFinishFooterVisibility();
+  finishBtn.disabled   = true;
+  toggleAnswersBtn.disabled    = true;
+  toggleAnswersBtn.textContent = "Mostrar Gabarito";
+  setStatus("Gerando simulado único…");
 
   try {
     const response = await fetch("/api/mix", {
@@ -154,23 +260,27 @@ async function generateMix(event) {
     });
 
     const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.detail || "Erro ao gerar simulado.");
-    }
+    if (!response.ok) throw new Error(payload.detail || "Erro ao gerar simulado.");
 
     state.currentExam = payload;
-    state.showAnswers = false;
+    updateFinishFooterVisibility();
+
     loadSavedAnswers(payload.id);
     renderExamMeta(payload);
+    
+    // Mostra barra de progresso
+    progressContainer.classList.remove("hidden");
+    updateProgress();
+
     renderQuestions(payload);
 
-    toggleAnswersBtn.disabled = false;
-    toggleAnswersBtn.textContent = "Mostrar gabarito";
+    // Habilita só o "Finalizar" — gabarito continua bloqueado
+    finishBtn.disabled = false;
 
     exportPdfBtn.href = `/api/mix/${payload.id}/pdf`;
     exportPdfBtn.classList.remove("disabled");
 
-    setStatus(`Simulado pronto com ${payload.questions.length} questoes.`);
+    setStatus(`Simulado pronto com ${payload.questions.length} questões.`);
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -178,21 +288,265 @@ async function generateMix(event) {
   }
 }
 
+// ─── Mostrar / ocultar gabarito (só após finalizar) ───────────────────────
 function toggleAnswers() {
-  if (!state.currentExam) return;
+  // Proteção forte: gabarito inacessível se não finalizado
+  if (!state.currentExam || !state.examFinished) return;
+
   state.showAnswers = !state.showAnswers;
   toggleAnswersBtn.textContent = state.showAnswers
-    ? "Ocultar gabarito"
-    : "Mostrar gabarito";
+    ? "Ocultar Gabarito"
+    : "Mostrar Gabarito";
   renderQuestions(state.currentExam);
 }
 
-function updateLanguageVisibility() {
-  const isDayOne = Number(daySelect.value) === 1;
-  languageField.classList.toggle("hidden", !isDayOne);
+// ─── Cálculo de resultado ──────────────────────────────────────────────────
+function calcResult() {
+  let correct = 0;
+  let wrong = 0;
+  let blank = 0;
+
+  const areas = {};
+  const total = state.currentExam.questions.length;
+
+  state.currentExam.questions.forEach((question) => {
+    const answer = state.answers[String(question.mixedIndex)];
+    const area = question.area || "Geral";
+
+    if (!areas[area]) {
+      areas[area] = {
+        total: 0,
+        correct: 0,
+        wrong: 0,
+        blank: 0,
+      };
+    }
+
+    areas[area].total++;
+
+    if (!answer) {
+      blank++;
+      areas[area].blank++;
+    } else if (answer === question.correctAlternative) {
+      correct++;
+      areas[area].correct++;
+    } else {
+      wrong++;
+      areas[area].wrong++;
+    }
+  });
+
+  return {
+    total,
+    correct,
+    wrong,
+    blank,
+    percentage: Math.round((correct / total) * 100),
+    areas,
+  };
 }
 
+// ─── Renderização da tela de resultado ────────────────────────────────────
+function renderResult() {
+  const r = state.result;
+  if (!r) return;
+
+  // Mensagem motivacional
+  let motivMsg, motivClass;
+  if (r.percentage >= 80) {
+    motivMsg   = "🏆 Excelente desempenho! Você está muito bem preparado para o ENEM.";
+    motivClass = "motiv-excellent";
+  } else if (r.percentage >= 60) {
+    motivMsg   = "👍 Bom desempenho! Revise os tópicos com maior dificuldade.";
+    motivClass = "motiv-good";
+  } else {
+    motivMsg   = "📚 Continue estudando! Com dedicação você chega lá.";
+    motivClass = "motiv-needs-work";
+  }
+
+  // Pior área (menor % de acerto)
+  let worstArea = null;
+  let worstPct  = Infinity;
+  
+  Object.entries(r.areas).forEach(([area, data]) => {
+    const answered = data.correct + data.wrong;
+    if (answered === 0) return;
+    const pct = (data.correct / answered) * 100;
+    
+    if (pct < worstPct) {
+      worstPct = pct;
+      worstArea = area;
+    }
+  });
+
+  const studyRec = {
+    "Linguagens":           "Pratique interpretação de texto, gramática e redação dissertativa-argumentativa.",
+    "Ciências Humanas":     "Revise história do Brasil e do mundo, geografia, filosofia e sociologia.",
+    "Ciências da Natureza": "Releia física, química e biologia com foco em fórmulas e conceitos-chave.",
+    "Matemática":           "Resolva exercícios de álgebra, geometria, probabilidade e estatística.",
+    "Redação":              "Escreva redações semanais seguindo a estrutura dissertativa e peça correção.",
+    "Geral":                "Revise os conteúdos gerais e faça mais simulados.",
+  };
+
+  // Linhas por área — ordenadas por % decrescente
+  const areasHTML = Object.entries(r.areas)
+    .sort(([, a], [, b]) => {
+      const pa = a.total > 0 ? a.correct / a.total : 0;
+      const pb = b.total > 0 ? b.correct / b.total : 0;
+      return pb - pa;
+    })
+    .map(([area, data]) => {
+      const pct      = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+      const isWorst  = area === worstArea;
+      
+      return `
+        <div class="result-summary" style="margin-bottom: 15px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px;">
+            <div style="font-weight: bold; margin-bottom: 5px;">${area} ${isWorst ? "⚠️" : ""}</div>
+            <div style="display: flex; gap: 15px; font-size: 0.9em;">
+              <span><strong>${data.correct}</strong> Acertos</span>
+              <span><strong>${data.wrong}</strong> Erros</span>
+              <span><strong>${pct}%</strong> Aproveitamento</span>
+            </div>
+            ${isWorst ? `<div style="margin-top: 5px; font-size: 0.85em; color: #6b7280;"><em>Dica: ${studyRec[area] || studyRec["Geral"]}</em></div>` : ""}
+        </div>
+      `;
+    })
+    .join("");
+
+  // Anel SVG de progresso circular
+  const radius = 52;
+  const circ   = +(2 * Math.PI * radius).toFixed(2);
+  const filled = +((circ * r.percentage) / 100).toFixed(2);
+  const ringColor = r.percentage >= 80 ? "#16a34a" : r.percentage >= 60 ? "#f59e0b" : "#dc2626";
+
+  const ringHTML = `
+    <div class="progress-ring-wrap">
+      <svg class="progress-ring" viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
+        <circle cx="60" cy="60" r="${radius}" fill="none" stroke="#e5e7eb" stroke-width="10"/>
+        <circle cx="60" cy="60" r="${radius}" fill="none"
+          stroke="${ringColor}" stroke-width="10"
+          stroke-dasharray="${filled} ${circ}"
+          stroke-dashoffset="${circ / 4}"
+          stroke-linecap="round"
+        />
+        <text x="60" y="56" text-anchor="middle" font-size="20" font-weight="700" fill="${ringColor}">${r.percentage}%</text>
+        <text x="60" y="74" text-anchor="middle" font-size="11" fill="#6b7280">acertos</text>
+      </svg>
+    </div>
+  `;
+
+  // Monta o card completo substituindo a lista de questões
+  questionsEl.innerHTML = `
+    <div class="result-card" id="result-card">
+
+      <div class="result-header">
+        <h2 class="result-title">🎉 Simulado Finalizado!</h2>
+        <p class="result-subtitle">
+          ${state.currentExam.questions.length} questões &nbsp;·&nbsp; Dia ${state.currentExam.day}
+        </p>
+      </div>
+
+      <div class="result-body">
+        ${ringHTML}
+        <div class="result-counters">
+          <div class="counter counter-correct">
+            <span class="counter-num">${r.correct}</span>
+            <span class="counter-label">Acertos</span>
+          </div>
+          <div class="counter counter-wrong">
+            <span class="counter-num">${r.wrong}</span>
+            <span class="counter-label">Erros</span>
+          </div>
+          <div class="counter counter-blank">
+            <span class="counter-num">${r.blank}</span>
+            <span class="counter-label">Em branco</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="motiv-msg ${motivClass}">${motivMsg}</div>
+
+      <div class="areas-section">
+        <h3 class="areas-title">📊 Desempenho por área</h3>
+        ${areasHTML}
+      </div>
+
+      <div class="result-actions">
+        <button class="btn btn-primary" id="show-gabarito-btn">📋 Ver Gabarito</button>
+      </div>
+
+    </div>
+  `;
+
+  // Botão "Ver Gabarito" dentro do card
+  document.getElementById("show-gabarito-btn").addEventListener("click", () => {
+    state.showAnswers = true;
+    toggleAnswersBtn.textContent = "Ocultar Gabarito";
+    renderQuestions(state.currentExam);
+    questionsEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+// ─── Finalizar simulado ────────────────────────────────────────────────────
+async function finishExam() {
+  if (!state.currentExam || state.examFinished) return;
+
+  const answered = Object.keys(state.answers).length;
+  const total    = state.currentExam.questions.length;
+
+  // Confirmação 1: questões sem resposta
+  if (answered < total) {
+    const ok = await showConfirmModal(
+      "Questões em branco",
+      `Você respondeu ${answered} de ${total} questões.\nDeseja finalizar mesmo assim?`
+    );
+    if (!ok) return;
+  }
+
+  // Confirmação 2: decisão irreversível
+  const ok2 = await showConfirmModal(
+    "Finalizar simulado",
+    "Deseja realmente finalizar o simulado?\nDepois disso não será possível alterar as respostas."
+  );
+  if (!ok2) return;
+
+  // Calcula resultado e trava o estado
+  state.result       = calcResult();
+  state.examFinished = true;
+
+  // Atualiza botões
+  finishBtn.disabled            = true;
+  toggleAnswersBtn.disabled     = false;
+  toggleAnswersBtn.textContent  = "Mostrar Gabarito";
+  updateFinishFooterVisibility();
+
+  // Esconde barra de progresso (não é mais relevante)
+  progressContainer.classList.add("hidden");
+
+  renderResult();
+}
+
+// ─── Visibilidade do campo de idioma ──────────────────────────────────────
+function updateLanguageVisibility() {
+  languageField.classList.toggle("hidden", Number(daySelect.value) !== 1);
+}
+
+// ─── Event Listeners ──────────────────────────────────────────────────────
 mixForm.addEventListener("submit", generateMix);
 toggleAnswersBtn.addEventListener("click", toggleAnswers);
+finishBtn.addEventListener("click", finishExam);
+
+modalCancelBtn.addEventListener("click", () => closeConfirmModal(false));
+modalConfirmBtn.addEventListener("click", () => closeConfirmModal(true));
+confirmModal.addEventListener("click", (event) => {
+  if (event.target === confirmModal) closeConfirmModal(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !confirmModal.classList.contains("hidden")) {
+    closeConfirmModal(false);
+  }
+});
 daySelect.addEventListener("change", updateLanguageVisibility);
 updateLanguageVisibility();
+updateFinishFooterVisibility();

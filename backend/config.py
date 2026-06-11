@@ -1,4 +1,9 @@
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Carrega as variáveis do ficheiro .env para o ambiente do Python
+load_dotenv()
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"
@@ -7,11 +12,18 @@ PDF_DIR = DATA_DIR / "pdfs"
 MIXES_DIR = DATA_DIR / "mixes"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-ENEM_API_BASE = "https://api.enem.dev/v1"
-INEP_DOWNLOAD_BASE = "https://download.inep.gov.br/enem/provas_e_gabaritos"
-INEP_PAGE_BASE = (
-    "https://www.gov.br/inep/pt-br/areas-de-atuacao/"
-    "avaliacao-e-exames-educacionais/enem/provas-e-gabaritos"
+# Utilizamos os.getenv() para procurar a variável. 
+# O segundo argumento (string) é o valor de "fallback" caso a variável não exista no .env
+ENEM_API_BASE = os.getenv("ENEM_API_BASE", "https://api.enem.dev/v1")
+
+INEP_DOWNLOAD_BASE = os.getenv(
+    "INEP_DOWNLOAD_BASE", 
+    "https://download.inep.gov.br/enem/provas_e_gabaritos"
+)
+
+INEP_PAGE_BASE = os.getenv(
+    "INEP_PAGE_BASE",
+    "https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos"
 )
 
 API_YEARS = range(2009, 2024)

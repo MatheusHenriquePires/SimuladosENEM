@@ -1,4 +1,6 @@
+import itertools
 import json
+import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -8,34 +10,74 @@ from backend.models import MixedExam, MixedQuestion, MixRequest, Question
 from backend.services.question_loader import get_available_years, load_exam
 
 RANDOM_YEAR_COUNT = 3
+CHUNK_SIZE = 5  # Tamanho do bloco para o restante da prova
 
+logger = logging.getLogger(__name__)
 
 async def build_mixed_exam(request: MixRequest) -> MixedExam:
     rng = secrets.SystemRandom()
-    years = _draw_years()
     caderno = _draw_caderno(request.day)
 
-    exams_by_year: dict[int, list[Question]] = {}
-    for year in years:
-        exams_by_year[year] = await load_exam(
-            year, caderno, request.language, request.day
+    # Carrega os anos com fallback automático
+    exams_by_year = await _load_years_with_fallback(
+        request.day, caderno, request.language, rng
+    )
+
+    if len(exams_by_year) < 2:
+        raise ValueError(
+            "Não foi possível carregar questões de pelo menos 2 anos. "
+            "Verifique sua conexão e tente novamente."
         )
+
+    years = list(exams_by_year.keys())
+    rng.shuffle(years)
+    year_cycle = itertools.cycle(years)
 
     mixed_questions: list[MixedQuestion] = []
-    start_index = 1 if request.day == 1 else 91
-    end_index = start_index + 90
+    
+    # Define o índice base para encontrar a questão correta na lista carregada
+    base_index = 1 if request.day == 1 else 91
 
-    for mixed_index in range(start_index, end_index):
-        source_year = rng.choice(years)
-        source_question = exams_by_year[source_year][mixed_index - start_index]
-        mixed_questions.append(
-            MixedQuestion(
-                **source_question.model_dump(),
-                mixedIndex=mixed_index,
-                originalYear=source_year,
-                originalIndex=source_question.index,
+    if request.day == 1:
+        # TRATAMENTO ESPECIAL LÍNGUA ESTRANGEIRA (Questões 1 a 5)
+        # Sorteia uma questão de cada ano, alternando
+        for mixed_index in range(1, 6):
+            source_year = next(year_cycle)
+            source_question = exams_by_year[source_year][mixed_index - base_index]
+            
+            mixed_questions.append(
+                MixedQuestion(
+                    **source_question.model_dump(),
+                    mixedIndex=mixed_index,
+                    originalYear=source_year,
+                    originalIndex=source_question.index,
+                )
             )
-        )
+        
+        # O restante da prova do Dia 1 começará da questão 6
+        start_index = 6
+        end_index = 91
+    else:
+        # Se for o Dia 2, começa normalmente da 91
+        start_index = 91
+        end_index = 181
+
+    # LÓGICA DE BLOCOS PARA O RESTANTE DA PROVA
+    for chunk_start in range(start_index, end_index, CHUNK_SIZE):
+        source_year = next(year_cycle)
+        chunk_end = min(chunk_start + CHUNK_SIZE, end_index)
+
+        for mixed_index in range(chunk_start, chunk_end):
+            source_question = exams_by_year[source_year][mixed_index - base_index]
+            
+            mixed_questions.append(
+                MixedQuestion(
+                    **source_question.model_dump(),
+                    mixedIndex=mixed_index,
+                    originalYear=source_year,
+                    originalIndex=source_question.index,
+                )
+            )
 
     exam_id = uuid.uuid4().hex[:12]
     mixed_exam = MixedExam(
@@ -47,18 +89,54 @@ async def build_mixed_exam(request: MixRequest) -> MixedExam:
         questions=mixed_questions,
         createdAt=datetime.now(timezone.utc).isoformat(),
     )
+    
     _save_mix(mixed_exam)
     return mixed_exam
 
 
-def _draw_years() -> list[int]:
+async def _load_years_with_fallback(
+    day: int,
+    caderno: str,
+    language: str,
+    rng: secrets.SystemRandom,
+) -> dict[int, list[Question]]:
+    """
+    Tenta carregar RANDOM_YEAR_COUNT anos aleatórios.
+    Se um ano falhar por qualquer motivo (PDF não encontrado, API indisponível,
+    extração incompleta…), descarta silenciosamente e tenta o próximo da lista
+    embaralhada — sem nunca travar a geração do simulado.
+    """
     available_years, _, _ = get_available_years()
     if len(available_years) < 2:
-        raise ValueError("Sao necessarios pelo menos 2 anos disponiveis.")
+        raise ValueError("São necessários pelo menos 2 anos disponíveis.")
 
-    rng = secrets.SystemRandom()
-    count = min(RANDOM_YEAR_COUNT, len(available_years))
-    return rng.sample(available_years, count)
+    # Embaralha todos os anos para iterar sem repetição
+    shuffled = rng.sample(available_years, len(available_years))
+
+    loaded: dict[int, list[Question]] = {}
+    failed: list[int] = []
+
+    for year in shuffled:
+        if len(loaded) >= RANDOM_YEAR_COUNT:
+            break
+        try:
+            questions = await load_exam(year, caderno, language, day)
+            loaded[year] = questions
+            logger.info("Ano %d carregado com sucesso (%d questões).", year, len(questions))
+        except Exception as exc:  # noqa: BLE001
+            failed.append(year)
+            logger.warning(
+                "Ano %d ignorado (será substituído): %s", year, exc
+            )
+
+    if failed:
+        logger.info(
+            "Anos ignorados por falha: %s. Anos usados: %s.",
+            failed,
+            list(loaded.keys()),
+        )
+
+    return loaded
 
 
 def _draw_caderno(day: int) -> str:
@@ -76,5 +154,5 @@ def _save_mix(exam: MixedExam) -> None:
 def load_mix(exam_id: str) -> MixedExam:
     path = MIXES_DIR / f"{exam_id}.json"
     if not path.exists():
-        raise FileNotFoundError(f"Simulado {exam_id} nao encontrado.")
+        raise FileNotFoundError(f"Simulado {exam_id} não encontrado.")
     return MixedExam.model_validate(json.loads(path.read_text(encoding="utf-8")))

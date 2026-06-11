@@ -6,3 +6,4 @@ pydantic>=2.9.0
 fpdf2>=2.8.0
 enem>=1.0.4
 python-multipart>=0.0.12
+python-dotenv>=1.0.0
