@@ -8,6 +8,11 @@ const state = {
 };
 
 // ─── Elementos DOM ────────────────────────────────────────────────────────────
+const mainMenu         = document.getElementById("main-menu");
+const enemPanel        = document.getElementById("enem-generator-panel");
+const btnMenuEnem      = document.getElementById("btn-menu-enem");
+const btnBackMenu      = document.getElementById("btn-back-menu");
+
 const mixForm          = document.getElementById("mix-form");
 const statusEl         = document.getElementById("status");
 const questionsEl      = document.getElementById("questions");
@@ -28,6 +33,11 @@ const modalMessage     = document.getElementById("modal-message");
 const modalCancelBtn   = document.getElementById("modal-cancel-btn");
 const modalConfirmBtn  = document.getElementById("modal-confirm-btn");
 
+const itaPanel         = document.getElementById("ita-generator-panel");
+const btnMenuIta       = document.getElementById("btn-menu-ita");
+const btnBackMenuIta   = document.getElementById("btn-back-menu-ita");
+const itaMixForm       = document.getElementById("ita-mix-form");
+
 let pendingConfirm = null;
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
@@ -46,10 +56,9 @@ function renderMarkdown(text) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" style="max-width: 100%; height: auto; display: block; margin: 10px 0;">');
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  html = html.replace(/\n/g, "<br>");
   return html;
 }
 
@@ -119,34 +128,7 @@ function updateProgress() {
   progressText.textContent = `${answered}/${total} respondidas`;
 }
 
-// ─── Mapeamento discipline → área ENEM ────────────────────────────────────
-function getAreaFromDiscipline(discipline) {
-  if (!discipline) return "Geral";
-  const d = discipline.toLowerCase();
-  if (
-    d.includes("linguagens") || d.includes("portugu") ||
-    d.includes("literatura") || d.includes("ingles") ||
-    d.includes("inglês")     || d.includes("espanhol") ||
-    d.includes("artes")      || d.includes("educação física")
-  ) return "Linguagens";
-  if (
-    d.includes("humanas") || d.includes("história") ||
-    d.includes("historia") || d.includes("geografia") ||
-    d.includes("filosofia") || d.includes("sociologia")
-  ) return "Ciências Humanas";
-  if (
-    d.includes("natureza") || d.includes("física") ||
-    d.includes("fisica")   || d.includes("química") ||
-    d.includes("quimica")  || d.includes("biologia")
-  ) return "Ciências da Natureza";
-  if (d.includes("matemática") || d.includes("matematica") || d.includes("math"))
-    return "Matemática";
-  if (d.includes("redação") || d.includes("redacao"))
-    return "Redação";
-  return "Geral";
-}
-
-// ─── Renderização do cabeçalho do simulado ─────────────────────────────────
+// ─── Renderização do cabeçalho do simulado ENEM ────────────────────────────
 function renderExamMeta(exam) {
   examMetaEl.classList.remove("hidden");
   const languageMeta = exam.day === 1 ? ` · Idioma: ${exam.language}` : "";
@@ -157,7 +139,7 @@ function renderExamMeta(exam) {
   `;
 }
 
-// ─── Renderização das questões ─────────────────────────────────────────────
+// ─── Renderização das questões ENEM ────────────────────────────────────────
 function renderQuestions(exam) {
   questionsEl.innerHTML = exam.questions
     .map((question) => {
@@ -166,13 +148,8 @@ function renderQuestions(exam) {
         .map((alt) => {
           const checked    = savedAnswer === alt.letter ? "checked" : "";
           const isSelected = savedAnswer === alt.letter ? "selected" : "";
-          // Gabarito só após finalizar (proteção no JS, não apenas CSS)
-          const isCorrect  = (state.showAnswers && state.examFinished && alt.isCorrect)
-            ? "correct" : "";
-          // Resposta errada do aluno destacada em vermelho
-          const isWrong    = (state.showAnswers && state.examFinished &&
-                              savedAnswer === alt.letter && !alt.isCorrect)
-            ? "wrong" : "";
+          const isCorrect  = (state.showAnswers && state.examFinished && alt.isCorrect) ? "correct" : "";
+          const isWrong    = (state.showAnswers && state.examFinished && savedAnswer === alt.letter && !alt.isCorrect) ? "wrong" : "";
           const disabled   = state.examFinished ? "disabled" : "";
           const lockedClass = state.examFinished ? "locked" : "";
 
@@ -213,7 +190,6 @@ function renderQuestions(exam) {
     })
     .join("");
 
-  // Registra eventos apenas enquanto o simulado não foi finalizado
   if (!state.examFinished) {
     questionsEl.querySelectorAll('input[type="radio"]').forEach((input) => {
       input.addEventListener("change", (event) => {
@@ -225,7 +201,86 @@ function renderQuestions(exam) {
   }
 }
 
-// ─── Geração do simulado ───────────────────────────────────────────────────
+// ─── Renderização das questões ITA ─────────────────────────────────────────
+// ─── Renderização das questões ITA ─────────────────────────────────────────
+function renderItaQuestions(exam) {
+  questionsEl.innerHTML = exam.questions
+    .map((question) => {
+      const savedAnswer = state.answers[String(question.mixedIndex)];
+      
+      const letters = ['A', 'B', 'C', 'D', 'E'];
+      let alternativesHtml = "";
+      
+      // Monta as opções (A, B, C, D, E) para a Fase 1
+      if (exam.phase === 1) {
+        alternativesHtml = `<ul class="alternatives" style="margin-top: 15px;">` + letters.map(letter => {
+          const checked    = savedAnswer === letter ? "checked" : "";
+          const isSelected = savedAnswer === letter ? "selected" : "";
+          const isCorrect  = (state.showAnswers && state.examFinished && question.correctAlternative === letter) ? "correct" : "";
+          const isWrong    = (state.showAnswers && state.examFinished && savedAnswer === letter && question.correctAlternative !== letter) ? "wrong" : "";
+          const disabled   = state.examFinished ? "disabled" : "";
+          const lockedClass = state.examFinished ? "locked" : "";
+          // Após renderizar tudo, manda o MathJax processar as fórmulas LaTeX do ITA
+  if (window.MathJax) {
+    MathJax.typesetPromise([questionsEl]).catch((err) => console.log('Erro no MathJax: ', err));
+  }
+
+          return `
+            <li class="${[isCorrect, isSelected, isWrong].filter(Boolean).join(" ")}">
+              <label class="answer-option ${lockedClass}">
+                <input type="radio" name="ita-q-${question.mixedIndex}" value="${letter}" data-question-index="${question.mixedIndex}" ${checked} ${disabled}>
+                <span>Marcar Alternativa <strong>${letter}</strong></span>
+              </label>
+            </li>
+          `;
+        }).join("") + `</ul>`;
+      }
+
+      // Prevenção caso falte algum dado de matéria/ano no JSON
+      const materiaName = question.materia ? question.materia.toUpperCase() : "GERAL";
+      const anoName = question.ano || "";
+     
+       return `
+        <article class="question-card" data-index="${question.mixedIndex}">
+          <div class="question-header">
+            <h3>Questão ${question.mixedIndex}</h3>
+            <span class="question-origin">ITA ${anoName} · ${materiaName}</span>
+          </div>
+          
+          <div class="context" style="margin-bottom: 20px; font-size: 1.05rem;">
+            ${renderMarkdown(question.context)}
+          </div>
+          
+          <details style="margin-bottom: 15px; cursor: pointer; color: var(--muted); font-size: 0.85rem;">
+            <summary>Ver imagem original da prova</summary>
+            <div style="text-align: center; margin-top: 10px;">
+              <img src="/ita-assets/${question.imagem}" alt="Questão original" style="max-width: 100%; border-radius: 8px;">
+            </div>
+          </details>
+
+          ${alternativesHtml}
+          
+          <span class="answer-badge ${(state.showAnswers && state.examFinished) ? "" : "hidden"}">
+            Gabarito: ${question.correctAlternative || "Consulte o gabarito oficial"}
+          </span>
+        </article>
+      `;
+
+    })
+    .join("");
+
+  if (!state.examFinished) {
+    questionsEl.querySelectorAll('input[type="radio"]').forEach((input) => {
+      input.addEventListener("change", (event) => {
+        saveAnswer(event.target.dataset.questionIndex, event.target.value);
+        updateProgress();
+        renderItaQuestions(exam); // Re-renderiza para aplicar estado visual "selected"
+      });
+    });
+  }
+}
+
+// ─── Geração do simulado ENEM ──────────────────────────────────────────────
 async function generateMix(event) {
   event.preventDefault();
 
@@ -236,12 +291,8 @@ async function generateMix(event) {
     setStatus("Finalize o simulado atual antes de gerar um novo.");
     return;
   }
-  questionsEl.scrollIntoView({
-    behavior: "smooth",
-    block: "start",
-  });
+  questionsEl.scrollIntoView({ behavior: "smooth", block: "start" });
   
-  // Reseta estado completamente
   state.examFinished = false;
   state.showAnswers  = false;
   state.result       = null;
@@ -268,17 +319,14 @@ async function generateMix(event) {
     loadSavedAnswers(payload.id);
     renderExamMeta(payload);
     
-    // Mostra barra de progresso
     progressContainer.classList.remove("hidden");
     updateProgress();
 
     renderQuestions(payload);
 
-    // Habilita só o "Finalizar" — gabarito continua bloqueado
     finishBtn.disabled = false;
-
     exportPdfBtn.href = `/api/mix/${payload.id}/pdf`;
-    exportPdfBtn.classList.remove("disabled");
+    exportPdfBtn.classList.remove("disabled", "hidden");
 
     setStatus(`Simulado pronto com ${payload.questions.length} questões.`);
   } catch (error) {
@@ -288,16 +336,81 @@ async function generateMix(event) {
   }
 }
 
-// ─── Mostrar / ocultar gabarito (só após finalizar) ───────────────────────
+// ─── Geração do simulado ITA ───────────────────────────────────────────────
+async function generateItaMix(event) {
+  event.preventDefault();
+
+  const subject = document.getElementById("ita-subject").value;
+  const phase   = Number(document.getElementById("ita-phase").value);
+  const itaStatusEl = document.getElementById("ita-status");
+
+  if (state.currentExam && !state.examFinished) {
+    itaStatusEl.textContent = "Finalize o simulado atual antes de gerar um novo.";
+    itaStatusEl.classList.add("error");
+    return;
+  }
+
+  itaStatusEl.textContent = "Gerando simulado ITA...";
+  itaStatusEl.classList.remove("error");
+
+  try {
+    const response = await fetch("/api/ita/mix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject, phase, studentId: getStudentId() }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Erro ao gerar simulado ITA.");
+
+    // Esconde o painel
+    document.getElementById("ita-generator-panel").classList.add("hidden");
+    questionsEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    
+    state.currentExam = payload;
+    state.examFinished = false;
+    state.showAnswers  = false;
+    state.result       = null;
+
+    updateFinishFooterVisibility();
+    finishBtn.disabled = false;
+    toggleAnswersBtn.disabled    = true;
+    toggleAnswersBtn.textContent = "Mostrar Gabarito";
+    exportPdfBtn.classList.add("hidden"); // Sem PDF pro ITA por enquanto
+
+    // Preenche o cabeçalho
+    examMetaEl.classList.remove("hidden");
+    examMetaEl.innerHTML = `
+      <strong>Simulado ITA</strong> &mdash; ID: ${payload.id}<br>
+      Fase ${payload.phase} &nbsp;·&nbsp; Disciplina: ${payload.subject.toUpperCase()}<br>
+      ${payload.questions.length} questões
+    `;
+
+    loadSavedAnswers(payload.id);
+    progressContainer.classList.remove("hidden");
+    updateProgress();
+
+    renderItaQuestions(payload);
+    itaStatusEl.textContent = "";
+
+  } catch (error) {
+    itaStatusEl.textContent = error.message;
+    itaStatusEl.classList.add("error");
+  }
+}
+
+// ─── Mostrar / ocultar gabarito ───────────────────────────────────────────
 function toggleAnswers() {
-  // Proteção forte: gabarito inacessível se não finalizado
   if (!state.currentExam || !state.examFinished) return;
 
   state.showAnswers = !state.showAnswers;
-  toggleAnswersBtn.textContent = state.showAnswers
-    ? "Ocultar Gabarito"
-    : "Mostrar Gabarito";
-  renderQuestions(state.currentExam);
+  toggleAnswersBtn.textContent = state.showAnswers ? "Ocultar Gabarito" : "Mostrar Gabarito";
+  
+  if (state.currentExam.phase) {
+    renderItaQuestions(state.currentExam);
+  } else {
+    renderQuestions(state.currentExam);
+  }
 }
 
 // ─── Cálculo de resultado ──────────────────────────────────────────────────
@@ -311,15 +424,11 @@ function calcResult() {
 
   state.currentExam.questions.forEach((question) => {
     const answer = state.answers[String(question.mixedIndex)];
-    const area = question.area || "Geral";
+    // Usa a propriedade subject do ITA ou area do ENEM
+    const area = question.area || question.subject || "Geral";
 
     if (!areas[area]) {
-      areas[area] = {
-        total: 0,
-        correct: 0,
-        wrong: 0,
-        blank: 0,
-      };
+      areas[area] = { total: 0, correct: 0, wrong: 0, blank: 0 };
     }
 
     areas[area].total++;
@@ -351,10 +460,9 @@ function renderResult() {
   const r = state.result;
   if (!r) return;
 
-  // Mensagem motivacional
   let motivMsg, motivClass;
   if (r.percentage >= 80) {
-    motivMsg   = "🏆 Excelente desempenho! Você está muito bem preparado para o ENEM.";
+    motivMsg   = "🏆 Excelente desempenho! Você está muito bem preparado.";
     motivClass = "motiv-excellent";
   } else if (r.percentage >= 60) {
     motivMsg   = "👍 Bom desempenho! Revise os tópicos com maior dificuldade.";
@@ -364,7 +472,6 @@ function renderResult() {
     motivClass = "motiv-needs-work";
   }
 
-  // Pior área (menor % de acerto)
   let worstArea = null;
   let worstPct  = Infinity;
   
@@ -372,23 +479,12 @@ function renderResult() {
     const answered = data.correct + data.wrong;
     if (answered === 0) return;
     const pct = (data.correct / answered) * 100;
-    
     if (pct < worstPct) {
       worstPct = pct;
       worstArea = area;
     }
   });
 
-  const studyRec = {
-    "Linguagens":           "Pratique interpretação de texto, gramática e redação dissertativa-argumentativa.",
-    "Ciências Humanas":     "Revise história do Brasil e do mundo, geografia, filosofia e sociologia.",
-    "Ciências da Natureza": "Releia física, química e biologia com foco em fórmulas e conceitos-chave.",
-    "Matemática":           "Resolva exercícios de álgebra, geometria, probabilidade e estatística.",
-    "Redação":              "Escreva redações semanais seguindo a estrutura dissertativa e peça correção.",
-    "Geral":                "Revise os conteúdos gerais e faça mais simulados.",
-  };
-
-  // Linhas por área — ordenadas por % decrescente
   const areasHTML = Object.entries(r.areas)
     .sort(([, a], [, b]) => {
       const pa = a.total > 0 ? a.correct / a.total : 0;
@@ -401,19 +497,17 @@ function renderResult() {
       
       return `
         <div class="result-summary" style="margin-bottom: 15px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <div style="font-weight: bold; margin-bottom: 5px;">${area} ${isWorst ? "⚠️" : ""}</div>
+            <div style="font-weight: bold; margin-bottom: 5px; text-transform: capitalize;">${area} ${isWorst ? "⚠️" : ""}</div>
             <div style="display: flex; gap: 15px; font-size: 0.9em;">
               <span><strong>${data.correct}</strong> Acertos</span>
               <span><strong>${data.wrong}</strong> Erros</span>
               <span><strong>${pct}%</strong> Aproveitamento</span>
             </div>
-            ${isWorst ? `<div style="margin-top: 5px; font-size: 0.85em; color: #6b7280;"><em>Dica: ${studyRec[area] || studyRec["Geral"]}</em></div>` : ""}
         </div>
       `;
     })
     .join("");
 
-  // Anel SVG de progresso circular
   const radius = 52;
   const circ   = +(2 * Math.PI * radius).toFixed(2);
   const filled = +((circ * r.percentage) / 100).toFixed(2);
@@ -435,14 +529,17 @@ function renderResult() {
     </div>
   `;
 
-  // Monta o card completo substituindo a lista de questões
+  // Checa se é ENEM ou ITA para formatar o subtítulo
+  const subtitleInfo = state.currentExam.day 
+    ? `Dia ${state.currentExam.day}` 
+    : `Fase ${state.currentExam.phase}`;
+
   questionsEl.innerHTML = `
     <div class="result-card" id="result-card">
-
       <div class="result-header">
         <h2 class="result-title">🎉 Simulado Finalizado!</h2>
         <p class="result-subtitle">
-          ${state.currentExam.questions.length} questões &nbsp;·&nbsp; Dia ${state.currentExam.day}
+          ${state.currentExam.questions.length} questões &nbsp;·&nbsp; ${subtitleInfo}
         </p>
       </div>
 
@@ -467,22 +564,24 @@ function renderResult() {
       <div class="motiv-msg ${motivClass}">${motivMsg}</div>
 
       <div class="areas-section">
-        <h3 class="areas-title">📊 Desempenho por área</h3>
+        <h3 class="areas-title">📊 Desempenho</h3>
         ${areasHTML}
       </div>
 
       <div class="result-actions">
         <button class="btn btn-primary" id="show-gabarito-btn">📋 Ver Gabarito</button>
       </div>
-
     </div>
   `;
 
-  // Botão "Ver Gabarito" dentro do card
   document.getElementById("show-gabarito-btn").addEventListener("click", () => {
     state.showAnswers = true;
     toggleAnswersBtn.textContent = "Ocultar Gabarito";
-    renderQuestions(state.currentExam);
+    if (state.currentExam.phase) {
+      renderItaQuestions(state.currentExam);
+    } else {
+      renderQuestions(state.currentExam);
+    }
     questionsEl.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
@@ -494,7 +593,6 @@ async function finishExam() {
   const answered = Object.keys(state.answers).length;
   const total    = state.currentExam.questions.length;
 
-  // Confirmação 1: questões sem resposta
   if (answered < total) {
     const ok = await showConfirmModal(
       "Questões em branco",
@@ -503,39 +601,61 @@ async function finishExam() {
     if (!ok) return;
   }
 
-  // Confirmação 2: decisão irreversível
   const ok2 = await showConfirmModal(
     "Finalizar simulado",
     "Deseja realmente finalizar o simulado?\nDepois disso não será possível alterar as respostas."
   );
   if (!ok2) return;
 
-  // Calcula resultado e trava o estado
   state.result       = calcResult();
   state.examFinished = true;
 
-  // Atualiza botões
   finishBtn.disabled            = true;
   toggleAnswersBtn.disabled     = false;
   toggleAnswersBtn.textContent  = "Mostrar Gabarito";
   updateFinishFooterVisibility();
-
-  // Esconde barra de progresso (não é mais relevante)
   progressContainer.classList.add("hidden");
 
   renderResult();
 }
 
-// ─── Visibilidade do campo de idioma ──────────────────────────────────────
 function updateLanguageVisibility() {
   languageField.classList.toggle("hidden", Number(daySelect.value) !== 1);
 }
 
-// ─── Event Listeners ──────────────────────────────────────────────────────
+// ─── Event Listeners e Navegação ──────────────────────────────────────────
+
+// Menu Principal -> ITA
+btnMenuIta.addEventListener("click", () => {
+  mainMenu.classList.add("hidden");
+  itaPanel.classList.remove("hidden");
+});
+
+btnBackMenuIta.addEventListener("click", () => {
+  itaPanel.classList.add("hidden");
+  mainMenu.classList.remove("hidden");
+});
+
+// Menu Principal -> ENEM
+btnMenuEnem.addEventListener("click", () => {
+  mainMenu.classList.add("hidden");
+  enemPanel.classList.remove("hidden");
+});
+
+btnBackMenu.addEventListener("click", () => {
+  enemPanel.classList.add("hidden");
+  mainMenu.classList.remove("hidden");
+});
+
+// Formulários
+itaMixForm.addEventListener("submit", generateItaMix);
 mixForm.addEventListener("submit", generateMix);
+
+// Ações do Simulado
 toggleAnswersBtn.addEventListener("click", toggleAnswers);
 finishBtn.addEventListener("click", finishExam);
 
+// Modal
 modalCancelBtn.addEventListener("click", () => closeConfirmModal(false));
 modalConfirmBtn.addEventListener("click", () => closeConfirmModal(true));
 confirmModal.addEventListener("click", (event) => {

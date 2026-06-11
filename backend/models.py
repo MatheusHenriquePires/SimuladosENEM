@@ -64,3 +64,47 @@ class SyncResponse(BaseModel):
     language: str
     questionCount: int
     source: str
+
+class ItaQuestion(BaseModel):
+    id: str
+    materia: str
+    ano: int
+    fase: int
+    numero: int
+    assunto: str | None = None
+    competencias: List[str] = []
+    tipo: str | None = None
+    imagem: str
+    arquivo: str
+    source: str = "ita-brain"
+
+class ItaQuestion(BaseModel):
+    id: str
+    materia: str
+    ano: int | str
+    fase: int | str
+    numero: int | str
+    assunto: str | None = None
+    competencias: list[str] | None = []
+    tipo: str | None = None
+    imagem: str | None = None
+    arquivo: str | None = None
+    source: str = "ita-brain"
+    correctAlternative: str | None = None
+
+class ItaMixedQuestion(ItaQuestion):
+    mixedIndex: int
+
+class ItaMixRequest(BaseModel):
+    subject: Literal["todas", "fisica", "matematica", "quimica"] = "todas"
+    phase: Literal[1, 2] = 1
+    studentId: str | None = None
+
+class ItaMixedExam(BaseModel):
+    id: str
+    subject: str
+    phase: int
+    questions: list[ItaMixedQuestion]
+    createdAt: str
+    context: str | None = None
+    transcrito_por: str | None = None

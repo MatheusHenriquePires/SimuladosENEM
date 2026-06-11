@@ -3,23 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SimuladosENEM</title>
+  <title>Plataforma de Simulados</title>
   <link rel="stylesheet" href="/static/styles.css">
+  
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
 
   <header class="header">
     <div class="container">
-      <h1>🎓 ENEM Mesclador</h1>
-      <p>Simulados personalizados mesclando questões de diferentes anos.</p>
+      <h1>🎓 Plataforma de Simulados</h1>
+      <p>Prepare-se para os maiores vestibulares do país.</p>
     </div>
   </header>
 
   <main class="container">
 
-    <!-- Painel de geração -->
-    <section class="panel">
-      <h2>Gerar Simulado</h2>
+    <section id="main-menu" class="panel">
+      <h2>Selecione o seu simulado</h2>
+      <div class="menu-grid">
+        
+        <button class="menu-card" id="btn-menu-enem">
+          <div class="menu-card-icon">🔵</div>
+          <div class="menu-card-content">
+            <h3>Simulado ENEM</h3>
+            <p>Gerar prova mesclada com questões oficiais do INEP.</p>
+          </div>
+        </button>
+
+        <button class="menu-card" id="btn-menu-ita">
+          <div class="menu-card-icon">✈️</div>
+          <div class="menu-card-content">
+            <h3>Simulado ITA</h3>
+            <p>Treine com o banco de questões de alta performance.</p>
+          </div>
+        </button>
+
+        <button class="menu-card disabled" disabled>
+          <div class="menu-card-icon">🔴</div>
+          <div class="menu-card-content">
+            <h3>Simulado OAB</h3>
+            <p>Em breve...</p>
+          </div>
+        </button>
+
+      </div>
+    </section>
+
+    <section id="ita-generator-panel" class="panel hidden">
+      <div class="panel-header-with-back">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-back-menu-ita">← Voltar</button>
+        <h2>Gerar Simulado ITA</h2>
+      </div>
+
+      <form id="ita-mix-form">
+        <div class="field-row">
+          <div class="field">
+            <label for="ita-subject">Disciplina</label>
+            <select id="ita-subject" name="ita-subject">
+              <option value="todas">Todas (Física, Química, Mat)</option>
+              <option value="fisica">Física</option>
+              <option value="matematica">Matemática</option>
+              <option value="quimica">Química</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="ita-phase">Fase</label>
+            <select id="ita-phase" name="ita-phase">
+              <option value="1">1ª Fase (Objetivas)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary" id="generate-ita-btn">
+            Gerar Simulado ITA
+          </button>
+        </div>
+      </form>
+      <p id="ita-status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section id="enem-generator-panel" class="panel hidden">
+      <div class="panel-header-with-back">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-back-menu">← Voltar</button>
+        <h2>Gerar Simulado ENEM</h2>
+      </div>
 
       <form id="mix-form">
         <div class="field-row">
@@ -60,7 +130,6 @@
       <p id="status" class="status" aria-live="polite"></p>
     </section>
 
-    <!-- Modal customizado -->
     <div id="confirm-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-card">
         <h2 id="modal-title"></h2>
@@ -72,7 +141,6 @@
       </div>
     </div>
 
-    <!-- Barra de progresso -->
     <section id="progress-container" class="panel hidden">
       <div class="progress-header">
         <span>Progresso do Simulado</span>
@@ -83,10 +151,8 @@
       </div>
     </section>
 
-    <!-- Metadados do simulado gerado -->
     <section id="exam-meta" class="exam-meta hidden"></section>
 
-    <!-- Questões / tela de resultado (compartilham o mesmo container) -->
     <section id="questions" class="questions"></section>
 
   </main>
@@ -95,7 +161,8 @@
     <button id="finish-btn" class="btn btn-primary">
         Finalizar Simulado
     </button>
-</div>
+  </div>
+  
   <script src="/static/main.js"></script>
 </body>
 </html>

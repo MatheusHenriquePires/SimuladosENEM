@@ -45,6 +45,73 @@ body {
 .header h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
 .header p  { margin: 0; opacity: 0.9; }
 
+/* ─── Menu Principal ──────────────────────────────────────────────────────── */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.menu-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.menu-card:hover:not(.disabled) {
+  border-color: var(--primary);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px rgba(29, 78, 216, 0.1);
+}
+
+.menu-card.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.menu-card-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.menu-card-content h3 {
+  margin: 0 0 0.25rem;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.menu-card-content p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.panel-header-with-back {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel-header-with-back h2 {
+  margin: 0;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
 /* ─── Cards genéricos ─────────────────────────────────────────────────────── */
 .panel,
 .exam-meta,

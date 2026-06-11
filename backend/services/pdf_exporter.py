@@ -26,10 +26,115 @@ def _safe_text(text: str) -> str:
 
 
 class EnemPDF(FPDF):
-    def footer(self) -> None:
+    def __init__(self, color_name="AZUL", exam_day="1º DIA"):
+        super().__init__(orientation='P', unit='mm', format='A4')
+        self.set_auto_page_break(auto=True, margin=15)
+        self.color_name = color_name
+        self.exam_day = exam_day
+        
+        # Define a cor da caixa da capa com base no nome do caderno
+        self.rgb_color = (30, 144, 255)  # Azul padrão
+        if color_name.upper() == "AMARELO":
+            self.rgb_color = (255, 215, 0)
+        elif color_name.upper() == "ROSA":
+            self.rgb_color = (255, 105, 180)
+        elif color_name.upper() == "BRANCO":
+            self.rgb_color = (220, 220, 220)
+        elif color_name.upper() == "VERDE":
+            self.rgb_color = (34, 139, 34)
+        elif color_name.upper() == "CINZA":
+            self.rgb_color = (128, 128, 128)
+            
+    def add_cover_page(self):
+        self.add_page()
+        
+        # ---- Cabeçalho da Capa (Logo da Instituição) ----
+        self.set_font("Helvetica", "B", 24)
+        self.set_text_color(50, 50, 50)
+        self.set_y(20)
+        self.cell(0, 10, "colégio propósito", align="C", ln=True)
+        
+        self.set_font("Helvetica", "", 12)
+        self.set_text_color(100, 100, 100)
+        self.cell(0, 10, "EXAME NACIONAL DO ENSINO MÉDIO", align="C", ln=True)
+        
+        self.ln(10)
+        
+        # ---- Bloco de Cor e Título do Caderno ----
+        self.set_fill_color(*self.rgb_color)
+        self.rect(20, 50, 170, 30, 'F')
+        
+        if self.color_name.upper() in ["BRANCO", "AMARELO"]:
+            self.set_text_color(0, 0, 0)
+        else:
+            self.set_text_color(255, 255, 255)
+            
+        self.set_font("Helvetica", "B", 18)
+        self.set_xy(20, 55)
+        self.cell(170, 10, "SIMULADO ENEM EXCLUSIVO", align="C", ln=True)
+        self.set_font("Helvetica", "B", 14)
+        self.set_xy(20, 65)
+        self.cell(170, 10, f"CADERNO - {self.color_name.upper()}", align="C", ln=True)
+        
+        self.set_text_color(0, 0, 0)
+        
+        # ---- Identificação do Aluno ----
+        self.set_y(95)
+        self.set_font("Helvetica", "B", 10)
+        self.cell(0, 6, "NOME DO ALUNO:", ln=True)
+        self.rect(20, 101, 170, 10)
+        
+        self.set_y(115)
+        self.cell(80, 6, "NÚMERO DE INSCRIÇÃO / RA:", ln=True)
+        self.rect(20, 121, 80, 10)
+        
+        self.set_xy(110, 115)
+        self.cell(80, 6, "TURMA / UNIDADE:", ln=True)
+        self.rect(110, 121, 80, 10)
+        
+        # ---- Instruções no formato ENEM ----
+        self.set_y(145)
+        self.set_font("Helvetica", "B", 12)
+        self.cell(0, 10, "LEIA ATENTAMENTE AS INSTRUÇÕES SEGUINTES:", ln=True)
+        
+        self.set_font("Helvetica", "", 10)
+        instrucoes = [
+            "1. Este CADERNO DE QUESTÕES contém as questões sorteadas para o seu simulado.",
+            "2. Confira se a quantidade e a ordem das questões do seu caderno estão corretas.",
+            "3. O tempo disponível para estas provas deve seguir a recomendação do seu cronograma.",
+            "4. Reserve tempo suficiente para preencher o CARTÃO-RESPOSTA ou a plataforma.",
+            "5. Os rascunhos e as marcações assinaladas neste caderno não serão considerados na avaliação."
+        ]
+        
+        for inst in instrucoes:
+            self.multi_cell(170, 6, inst)
+            self.ln(2)
+
+    def header(self):
+        # Omitir o cabeçalho na Capa
+        if self.page_no() == 1:
+            return
+            
+        self.set_font("Helvetica", "B", 14)
+        self.set_text_color(50, 50, 50)
+        self.cell(50, 8, "colégio propósito", ln=0)
+        
+        self.set_font("Helvetica", "I", 10)
+        self.cell(0, 8, f"Simulado ENEM - Caderno {self.color_name.capitalize()}", align="R", ln=True)
+        
+        self.set_draw_color(200, 200, 200)
+        self.line(10, 18, 200, 18)
+        self.ln(5)
+
+    def footer(self):
+        # Omitir o rodapé na Capa
+        if self.page_no() == 1:
+            return
+            
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
-        self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
+        self.set_text_color(128)
+        self.cell(0, 10, f'{self.exam_day} | Página {self.page_no() - 1}', 0, 0, 'C')
 
 
 def _resolve_image_path(url_or_path: str) -> str | None:
@@ -95,27 +200,31 @@ def _write_markdown_content(pdf: FPDF, text: str, height: float = 6, size: int =
 
 
 def export_mixed_exam_pdf(exam: MixedExam) -> bytes:
-    pdf = EnemPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    day_str = f"{exam.day}º DIA"
+    pdf = EnemPDF(color_name=exam.caderno, exam_day=day_str)
     pdf.set_margins(15, 15, 15)
+    
+    # 1. Adiciona a Capa Padronizada
+    pdf.add_cover_page()
+    
+    # 2. Inicia as páginas de questões
     pdf.add_page()
 
-    _write_line(pdf, f"ENEM Mesclador - Simulado Dia {exam.day}", style="B", size=16, height=8)
-    _write_line(pdf, f"Anos: {', '.join(str(y) for y in exam.years)}", size=11)
-    _write_line(pdf, f"Caderno: {exam.caderno.capitalize()}", size=11)
+    # Informações de metadados do gerador
+    _write_line(pdf, f"Anos sorteados: {', '.join(str(y) for y in exam.years)}", size=9, style="I")
     if exam.day == 1:
-        _write_line(pdf, f"Idioma (Q1-5): {exam.language.capitalize()}", size=11)
-    _write_line(pdf, f"Gerado em: {exam.createdAt[:19]}", size=11)
-    pdf.ln(3)
+        _write_line(pdf, f"Idioma (Q1-5): {exam.language.capitalize()}", size=9, style="I")
+    _write_line(pdf, f"Gerado em: {exam.createdAt[:19]}", size=9, style="I")
+    pdf.ln(5)
 
+    # 3. Renderiza as questões
     for question in exam.questions:
         header = (
-            f"Questao {question.mixedIndex} "
+            f"Questão {question.mixedIndex} "
             f"(ENEM {question.originalYear}, item {question.originalIndex})"
         )
         _write_line(pdf, header, style="B", size=11)
 
-        # Substitui _write_line padrão pelo nosso novo motor de markdown com imagens
         if question.context:
             _write_markdown_content(pdf, question.context)
 
@@ -123,12 +232,11 @@ def export_mixed_exam_pdf(exam: MixedExam) -> bytes:
             _write_markdown_content(pdf, question.alternativesIntroduction)
 
         for alt in question.alternatives:
-            # Funciona perfeitamente aqui também! Ex: Se a letra A for apenas uma imagem, 
-            # ele escreve "A) " na tela e logo abaixo renderiza a imagem.
             _write_markdown_content(pdf, f"{alt.letter}) {alt.text}")
 
         pdf.ln(2)
 
+    # 4. Adiciona o Gabarito Consolidado no final
     pdf.add_page()
     _write_line(pdf, "Gabarito Consolidado", style="B", size=14, height=8)
 

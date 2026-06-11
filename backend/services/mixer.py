@@ -4,6 +4,9 @@ import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
+from typing import List, Dict, Optional
+import random
+from pathlib import Path
 
 from backend.config import DAY_CADERNO_MAP, MIXES_DIR
 from backend.models import MixedExam, MixedQuestion, MixRequest, Question
@@ -156,3 +159,38 @@ def load_mix(exam_id: str) -> MixedExam:
     if not path.exists():
         raise FileNotFoundError(f"Simulado {exam_id} não encontrado.")
     return MixedExam.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+
+def assemble_exam(questions: List[Dict], count: int = 30, materia: Optional[str] = None, seed: Optional[int] = None) -> Dict:
+    """Monta uma prova simples escolhendo `count` questões aleatórias do conjunto fornecido.
+
+    Se `materia` for informada, prioriza questões dessa matéria.
+    Retorna um dicionário com metadados e lista ordenada de questões.
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    pool = questions
+    if materia:
+        pool = [q for q in questions if materia.lower() in q.get('materia', '').lower()]
+        if not pool:
+            pool = questions
+
+    chosen = random.sample(pool, k=min(count, len(pool)))
+
+    exam = {
+        "title": f"Prova montada - {materia or 'misto'}",
+        "count_requested": count,
+        "count_actual": len(chosen),
+        "questions": chosen
+    }
+    return exam
+
+
+def save_exam_json(exam: Dict, out_path: Optional[Path] = None) -> Path:
+    if out_path is None:
+        ROOT = Path(__file__).resolve().parent.parent
+        out_path = ROOT / "ita-brain" / "assembled_exam.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(exam, indent=2, ensure_ascii=False), encoding='utf-8')
+    return out_path

@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import List, Dict, Optional
 
 import httpx
 
@@ -343,3 +344,43 @@ async def sync_year(
     questions = await load_exam(year, caderno, language, day)
     source = questions[0].source if questions else "unknown"
     return questions, source
+
+
+def load_questions_from_json(path: Optional[Path] = None) -> List[Dict]:
+    """Carrega questões de um arquivo JSON local (banco_questoes_local.json).
+
+    Se path não for informado, usa o caminho padrão dentro do projeto.
+    Retorna lista de dicionários representando questões.
+    """
+    if path is None:
+        ROOT = Path(__file__).resolve().parent.parent
+        path = ROOT / "ita-brain" / "banco_questoes_local.json"
+
+    if not Path(path).exists():
+        print(f"🟠 Arquivo de questões não encontrado: {path}")
+        return []
+
+    try:
+        data = json.loads(Path(path).read_text(encoding='utf-8'))
+        if isinstance(data, list):
+            return data
+        else:
+            print("⚠️ Formato inesperado no JSON de questões; esperado lista.")
+            return []
+    except Exception as e:
+        print(f"⚠️ Falha ao ler JSON de questões: {e}")
+        return []
+
+
+def filter_questions(questions: List[Dict], materia: Optional[str] = None, ano: Optional[int] = None, tipo: Optional[str] = None) -> List[Dict]:
+    """Filtra a lista de questões por matéria/ano/tipo quando fornecido."""
+    out = []
+    for q in questions:
+        if materia and q.get('materia') and materia.lower() not in q.get('materia', '').lower():
+            continue
+        if ano and q.get('ano') and int(q.get('ano')) != int(ano):
+            continue
+        if tipo and q.get('tipo') and tipo.lower() != q.get('tipo', '').lower():
+            continue
+        out.append(q)
+    return out
