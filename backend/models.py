@@ -30,9 +30,11 @@ class MixedQuestion(Question):
 
 
 class MixRequest(BaseModel):
-    years: list[int] = Field(min_length=2)
-    caderno: Literal["azul", "amarelo", "branco", "verde"] = "azul"
+    years: list[int] = Field(default_factory=list)
+    caderno: Literal["azul", "amarelo", "branco", "verde"] | None = None
     language: Literal["ingles", "espanhol"] = "ingles"
+    day: Literal[1, 2] = 1
+    studentId: str | None = None
 
     @field_validator("years")
     @classmethod
@@ -45,6 +47,7 @@ class MixedExam(BaseModel):
     years: list[int]
     caderno: str
     language: str
+    day: int = 1
     questions: list[MixedQuestion]
     createdAt: str
 

@@ -24,6 +24,16 @@ CADERNO_MAP = {
     "verde": 4,
 }
 
+DAY_CADERNO_MAP = {
+    1: CADERNO_MAP,
+    2: {
+        "amarelo": 5,
+        "cinza": 6,
+        "azul": 7,
+        "rosa": 8,
+    },
+}
+
 CADERNO_LABELS = {v: k.capitalize() for k, v in CADERNO_MAP.items()}
 
 for directory in (CACHE_DIR, PDF_DIR, MIXES_DIR):

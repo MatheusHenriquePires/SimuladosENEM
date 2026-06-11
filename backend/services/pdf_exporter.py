@@ -41,10 +41,11 @@ def export_mixed_exam_pdf(exam: MixedExam) -> bytes:
     pdf.set_margins(15, 15, 15)
     pdf.add_page()
 
-    _write_line(pdf, "ENEM Mesclador - Simulado 1o Dia", style="B", size=16, height=8)
+    _write_line(pdf, f"ENEM Mesclador - Simulado Dia {exam.day}", style="B", size=16, height=8)
     _write_line(pdf, f"Anos: {', '.join(str(y) for y in exam.years)}", size=11)
     _write_line(pdf, f"Caderno: {exam.caderno.capitalize()}", size=11)
-    _write_line(pdf, f"Idioma (Q1-5): {exam.language.capitalize()}", size=11)
+    if exam.day == 1:
+        _write_line(pdf, f"Idioma (Q1-5): {exam.language.capitalize()}", size=11)
     _write_line(pdf, f"Gerado em: {exam.createdAt[:19]}", size=11)
     pdf.ln(3)
 

@@ -10,27 +10,31 @@ import httpx
 from backend.config import (
     API_YEARS,
     CACHE_DIR,
-    CADERNO_MAP,
+    DAY_CADERNO_MAP,
     ENEM_API_BASE,
     PDF_YEARS,
 )
 from backend.models import Alternative, Question
 from backend.services.inep_client import download_exam_pdfs
 
-DAY1_QUESTION_COUNT = 90
+QUESTIONS_PER_DAY = 90
+DAY_QUESTION_RANGES = {
+    1: range(1, 91),
+    2: range(91, 181),
+}
 
 
-def _cache_path(year: int, caderno: str, language: str) -> Path:
+def _cache_path(year: int, caderno: str, language: str, day: int) -> Path:
     cache_dir = CACHE_DIR / str(year)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"dia1-{caderno}-{language}.json"
+    return cache_dir / f"dia{day}-{caderno}-{language}.json"
 
 
-def _normalize_api_question(data: dict, language: str) -> Question | None:
+def _normalize_api_question(data: dict, language: str, day: int) -> Question | None:
     question_language = data.get("language")
     index = data.get("index", 0)
 
-    if index <= 5 and question_language and question_language != language:
+    if day == 1 and index <= 5 and question_language and question_language != language:
         return None
 
     alternatives = [
@@ -46,8 +50,8 @@ def _normalize_api_question(data: dict, language: str) -> Question | None:
     return Question(
         year=data["year"],
         index=index,
-        discipline=data.get("discipline") or "linguagens",
-        language=question_language or language,
+        discipline=data.get("discipline") or _discipline_for_index(index, day),
+        language=question_language or (language if day == 1 and index <= 5 else None),
         context=data.get("context") or "",
         alternativesIntroduction=data.get("alternativesIntroduction") or "",
         alternatives=alternatives,
@@ -58,32 +62,33 @@ def _normalize_api_question(data: dict, language: str) -> Question | None:
 
 
 async def _fetch_api_question(
-    client: httpx.AsyncClient, year: int, index: int, language: str
+    client: httpx.AsyncClient, year: int, index: int, language: str, day: int
 ) -> Question | None:
     url = f"{ENEM_API_BASE}/exams/{year}/questions/{index}"
-    params = {"language": language} if index <= 5 else None
+    params = {"language": language} if day == 1 and index <= 5 else None
     try:
         response = await client.get(url, params=params)
-        if response.status_code == 404 and index <= 5:
+        if response.status_code == 404 and day == 1 and index <= 5:
             response = await client.get(url)
         response.raise_for_status()
     except httpx.HTTPError:
         return None
 
-    return _normalize_api_question(response.json(), language)
+    return _normalize_api_question(response.json(), language, day)
 
 
-async def _load_from_api(year: int, language: str) -> list[Question]:
+async def _load_from_api(year: int, language: str, day: int) -> list[Question]:
+    question_range = DAY_QUESTION_RANGES[day]
     async with httpx.AsyncClient(timeout=30.0) as client:
         tasks = [
-            _fetch_api_question(client, year, index, language)
-            for index in range(1, DAY1_QUESTION_COUNT + 1)
+            _fetch_api_question(client, year, index, language, day)
+            for index in question_range
         ]
         results = await asyncio.gather(*tasks)
 
     questions: list[Question] = []
     missing: list[int] = []
-    for index, result in enumerate(results, start=1):
+    for index, result in zip(question_range, results, strict=True):
         if result is None:
             missing.append(index)
             continue
@@ -91,7 +96,7 @@ async def _load_from_api(year: int, language: str) -> list[Question]:
 
     if missing:
         raise ValueError(
-            f"API incompleta para ENEM {year}: questões {missing} indisponíveis."
+            f"API incompleta para ENEM {year}: questoes {missing} indisponiveis."
         )
     return questions
 
@@ -148,7 +153,15 @@ def _split_context_and_intro(full_text: str) -> tuple[str, str]:
     return context, intro
 
 
-def _parse_extractor_item(item: dict, year: int, index: int, language: str) -> Question:
+def _discipline_for_index(index: int, day: int) -> str:
+    if day == 1:
+        return "linguagens" if index <= 45 else "ciencias-humanas"
+    return "ciencias-natureza" if index <= 135 else "matematica"
+
+
+def _parse_extractor_item(
+    item: dict, year: int, index: int, language: str, day: int
+) -> Question:
     full_text, files = _blocks_to_parts(item.get("content", []))
     context, intro = _split_context_and_intro(full_text)
 
@@ -173,12 +186,11 @@ def _parse_extractor_item(item: dict, year: int, index: int, language: str) -> Q
                 )
             )
 
-    discipline = "linguagens" if index <= 45 else "ciencias-humanas"
     return Question(
         year=year,
         index=index,
-        discipline=discipline,
-        language=language if index <= 5 else None,
+        discipline=_discipline_for_index(index, day),
+        language=language if day == 1 and index <= 5 else None,
         context=context,
         alternativesIntroduction=intro,
         alternatives=alternatives,
@@ -188,7 +200,15 @@ def _parse_extractor_item(item: dict, year: int, index: int, language: str) -> Q
     )
 
 
-def _select_extractor_items(raw_items: list[dict], language: str) -> list[dict]:
+def _select_extractor_items(raw_items: list[dict], language: str, day: int) -> list[dict]:
+    if day == 2:
+        selected = raw_items[:QUESTIONS_PER_DAY]
+        if len(selected) != QUESTIONS_PER_DAY:
+            raise ValueError(
+                f"Extracao incompleta: {len(selected)}/{QUESTIONS_PER_DAY} questoes no PDF."
+            )
+        return selected
+
     first_foreign: list[dict] = []
     second_foreign: list[dict] = []
     remaining: list[dict] = []
@@ -210,26 +230,29 @@ def _select_extractor_items(raw_items: list[dict], language: str) -> list[dict]:
 
     foreign_block = first_foreign if language == "ingles" else second_foreign
     if len(foreign_block) != 5:
-        raise ValueError("Não foi possível identificar o bloco de língua estrangeira no PDF.")
+        raise ValueError("Nao foi possivel identificar o bloco de lingua estrangeira no PDF.")
 
     selected = foreign_block + remaining
-    if len(selected) != DAY1_QUESTION_COUNT:
+    if len(selected) != QUESTIONS_PER_DAY:
         raise ValueError(
-            f"Extração incompleta: {len(selected)}/{DAY1_QUESTION_COUNT} questões no PDF."
+            f"Extracao incompleta: {len(selected)}/{QUESTIONS_PER_DAY} questoes no PDF."
         )
     return selected
 
 
-def _load_extractor_json(json_path: Path, year: int, language: str) -> list[Question]:
+def _load_extractor_json(
+    json_path: Path, year: int, language: str, day: int
+) -> list[Question]:
     data = json.loads(json_path.read_text(encoding="utf-8"))
     raw_items = data.get("data") if isinstance(data, dict) else data
     if not isinstance(raw_items, list):
-        raise ValueError("Formato JSON do extractor não reconhecido.")
+        raise ValueError("Formato JSON do extractor nao reconhecido.")
 
-    selected_items = _select_extractor_items(raw_items, language)
+    selected_items = _select_extractor_items(raw_items, language, day)
+    start_index = 1 if day == 1 else 91
     return [
-        _parse_extractor_item(item, year, index, language)
-        for index, item in enumerate(selected_items, start=1)
+        _parse_extractor_item(item, year, index, language, day)
+        for index, item in enumerate(selected_items, start=start_index)
     ]
 
 
@@ -258,16 +281,16 @@ def _extract_from_pdf(prova_path: Path, gabarito_path: Path, output_dir: Path) -
 
     json_path = _find_extractor_output(output_dir)
     if not json_path:
-        raise FileNotFoundError("Extractor não gerou arquivo JSON.")
+        raise FileNotFoundError("Extractor nao gerou arquivo JSON.")
     return json_path
 
 
-async def _load_from_pdf(year: int, caderno: str, language: str) -> list[Question]:
-    caderno_num = CADERNO_MAP[caderno]
-    prova_path, gabarito_path = await download_exam_pdfs(year, caderno_num)
-    output_dir = CACHE_DIR / str(year) / f"extract-D1-CD{caderno_num}"
+async def _load_from_pdf(year: int, caderno: str, language: str, day: int) -> list[Question]:
+    caderno_num = DAY_CADERNO_MAP[day][caderno]
+    prova_path, gabarito_path = await download_exam_pdfs(year, caderno_num, day)
+    output_dir = CACHE_DIR / str(year) / f"extract-D{day}-CD{caderno_num}"
     json_path = _extract_from_pdf(prova_path, gabarito_path, output_dir)
-    return _load_extractor_json(json_path, year, language)
+    return _load_extractor_json(json_path, year, language, day)
 
 
 def get_available_years() -> tuple[list[int], list[int], list[int]]:
@@ -277,8 +300,13 @@ def get_available_years() -> tuple[list[int], list[int], list[int]]:
     return all_years, api_years, pdf_years
 
 
-async def load_day1_exam(year: int, caderno: str, language: str) -> list[Question]:
-    cache_file = _cache_path(year, caderno, language)
+async def load_exam(
+    year: int, caderno: str, language: str, day: int = 1
+) -> list[Question]:
+    if day not in DAY_QUESTION_RANGES:
+        raise ValueError("Dia invalido.")
+
+    cache_file = _cache_path(year, caderno, language, day)
     if cache_file.exists():
         raw = json.loads(cache_file.read_text(encoding="utf-8"))
         return [Question.model_validate(item) for item in raw]
@@ -286,13 +314,13 @@ async def load_day1_exam(year: int, caderno: str, language: str) -> list[Questio
     questions: list[Question] | None = None
     if year in API_YEARS:
         try:
-            questions = await _load_from_api(year, language)
+            questions = await _load_from_api(year, language, day)
         except ValueError:
-            questions = await _load_from_pdf(year, caderno, language)
+            questions = await _load_from_pdf(year, caderno, language, day)
     elif year in PDF_YEARS:
-        questions = await _load_from_pdf(year, caderno, language)
+        questions = await _load_from_pdf(year, caderno, language, day)
     else:
-        raise ValueError(f"Ano {year} não suportado.")
+        raise ValueError(f"Ano {year} nao suportado.")
 
     cache_file.write_text(
         json.dumps([q.model_dump() for q in questions], ensure_ascii=False, indent=2),
@@ -301,11 +329,17 @@ async def load_day1_exam(year: int, caderno: str, language: str) -> list[Questio
     return questions
 
 
-async def sync_year(year: int, caderno: str, language: str) -> tuple[list[Question], str]:
-    cache_file = _cache_path(year, caderno, language)
+async def load_day1_exam(year: int, caderno: str, language: str) -> list[Question]:
+    return await load_exam(year, caderno, language, day=1)
+
+
+async def sync_year(
+    year: int, caderno: str, language: str, day: int = 1
+) -> tuple[list[Question], str]:
+    cache_file = _cache_path(year, caderno, language, day)
     if cache_file.exists():
         cache_file.unlink()
 
-    questions = await load_day1_exam(year, caderno, language)
+    questions = await load_exam(year, caderno, language, day)
     source = questions[0].source if questions else "unknown"
     return questions, source

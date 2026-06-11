@@ -21,11 +21,11 @@ def build_pdf_urls(year: int, caderno: int, day: int = 1) -> tuple[str, str]:
     return prova, gabarito
 
 
-def _pdf_paths(year: int, caderno: int) -> tuple[Path, Path]:
+def _pdf_paths(year: int, caderno: int, day: int) -> tuple[Path, Path]:
     year_dir = PDF_DIR / str(year)
     year_dir.mkdir(parents=True, exist_ok=True)
-    prova_path = year_dir / f"D1_CD{caderno}_prova.pdf"
-    gabarito_path = year_dir / f"D1_CD{caderno}_gabarito.pdf"
+    prova_path = year_dir / f"D{day}_CD{caderno}_prova.pdf"
+    gabarito_path = year_dir / f"D{day}_CD{caderno}_gabarito.pdf"
     return prova_path, gabarito_path
 
 
@@ -98,12 +98,12 @@ async def _download_file(client: httpx.AsyncClient, url: str, destination: Path)
     destination.write_bytes(response.content)
 
 
-async def download_exam_pdfs(year: int, caderno: int) -> tuple[Path, Path]:
-    prova_path, gabarito_path = _pdf_paths(year, caderno)
+async def download_exam_pdfs(year: int, caderno: int, day: int = 1) -> tuple[Path, Path]:
+    prova_path, gabarito_path = _pdf_paths(year, caderno, day)
     if prova_path.exists() and gabarito_path.exists():
         return prova_path, gabarito_path
 
-    prova_url, gabarito_url = build_pdf_urls(year, caderno)
+    prova_url, gabarito_url = build_pdf_urls(year, caderno, day)
     headers = {"User-Agent": USER_AGENT}
 
     async with httpx.AsyncClient(
@@ -113,7 +113,7 @@ async def download_exam_pdfs(year: int, caderno: int) -> tuple[Path, Path]:
             client, gabarito_url
         )
         if not urls_valid:
-            discovered = await _discover_pdf_urls(client, year, caderno)
+            discovered = await _discover_pdf_urls(client, year, caderno, day)
             if not discovered:
                 raise FileNotFoundError(
                     f"Não foi possível encontrar PDFs do ENEM {year} caderno {caderno}."
@@ -127,4 +127,4 @@ async def download_exam_pdfs(year: int, caderno: int) -> tuple[Path, Path]:
 
 
 def normalize_legacy_filename(name: str) -> re.Match[str] | None:
-    return re.search(r"ENEM[_-]?(\d{4}).*DIA[_-]?1", name, re.IGNORECASE)
+    return re.search(r"ENEM[_-]?(\d{4}).*DIA[_-]?[12]", name, re.IGNORECASE)

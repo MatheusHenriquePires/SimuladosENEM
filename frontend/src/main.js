@@ -1,10 +1,9 @@
 const state = {
-  years: [],
   currentExam: null,
   showAnswers: false,
+  answers: {},
 };
 
-const yearsList = document.getElementById("years-list");
 const mixForm = document.getElementById("mix-form");
 const statusEl = document.getElementById("status");
 const questionsEl = document.getElementById("questions");
@@ -12,6 +11,8 @@ const examMetaEl = document.getElementById("exam-meta");
 const toggleAnswersBtn = document.getElementById("toggle-answers-btn");
 const exportPdfBtn = document.getElementById("export-pdf-btn");
 const generateBtn = document.getElementById("generate-btn");
+const daySelect = document.getElementById("day");
+const languageField = document.getElementById("language-field");
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -33,67 +34,85 @@ function renderMarkdown(text) {
   return html;
 }
 
-function getSelectedYears() {
-  return [...yearsList.querySelectorAll("input:checked")].map(
-    (input) => Number(input.value)
-  );
+function getStudentId() {
+  const storageKey = "enem-student-id";
+  let studentId = localStorage.getItem(storageKey);
+
+  if (!studentId) {
+    studentId = crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(storageKey, studentId);
+  }
+
+  return studentId;
 }
 
-function renderYears() {
-  yearsList.innerHTML = state.years
-    .map(
-      (year) => `
-      <label class="year-chip">
-        <input type="checkbox" name="year" value="${year}">
-        <span>${year}</span>
-      </label>
-    `
-    )
-    .join("");
+function getAnswersStorageKey(examId) {
+  return `enem-answers-${examId}`;
+}
 
-  yearsList.querySelectorAll(".year-chip").forEach((chip) => {
-    const input = chip.querySelector("input");
-    input.addEventListener("change", () => {
-      chip.classList.toggle("selected", input.checked);
-    });
-  });
+function loadSavedAnswers(examId) {
+  try {
+    state.answers = JSON.parse(localStorage.getItem(getAnswersStorageKey(examId))) || {};
+  } catch {
+    state.answers = {};
+  }
+}
 
-  const defaults = state.years.slice(0, 3);
-  yearsList.querySelectorAll("input").forEach((input) => {
-    if (defaults.includes(Number(input.value))) {
-      input.checked = true;
-      input.closest(".year-chip").classList.add("selected");
-    }
-  });
+function saveAnswer(questionIndex, letter) {
+  if (!state.currentExam) return;
+
+  state.answers[String(questionIndex)] = letter;
+  localStorage.setItem(
+    getAnswersStorageKey(state.currentExam.id),
+    JSON.stringify(state.answers)
+  );
 }
 
 function renderExamMeta(exam) {
   examMetaEl.classList.remove("hidden");
+  const languageMeta = exam.day === 1 ? ` - Idioma ${exam.language}` : "";
   examMetaEl.innerHTML = `
-    <strong>Simulado gerado</strong> — ID: ${exam.id}<br>
-    Rotação: ${exam.years.join(" → ")} (repetindo)<br>
-    Caderno ${exam.caderno} · Idioma ${exam.language} · ${exam.questions.length} questões
+    <strong>Simulado gerado</strong> - ID: ${exam.id}<br>
+    Dia ${exam.day}<br>
+    Anos sorteados: ${exam.years.join(" -> ")}<br>
+    Caderno ${exam.caderno}${languageMeta} - ${exam.questions.length} questoes
   `;
 }
 
 function renderQuestions(exam) {
   questionsEl.innerHTML = exam.questions
     .map((question) => {
+      const savedAnswer = state.answers[String(question.mixedIndex)];
       const alternatives = question.alternatives
-        .map(
-          (alt) => `
-          <li class="${state.showAnswers && alt.isCorrect ? "correct" : ""}">
-            <strong>${alt.letter})</strong> ${alt.text}
-          </li>
-        `
-        )
+        .map((alt) => {
+          const checked = savedAnswer === alt.letter ? "checked" : "";
+          const isSelected = savedAnswer === alt.letter ? "selected" : "";
+          const isCorrect = state.showAnswers && alt.isCorrect ? "correct" : "";
+
+          return `
+            <li class="${isCorrect} ${isSelected}">
+              <label class="answer-option">
+                <input
+                  type="radio"
+                  name="question-${question.mixedIndex}"
+                  value="${alt.letter}"
+                  data-question-index="${question.mixedIndex}"
+                  ${checked}
+                >
+                <span><strong>${alt.letter})</strong> ${renderMarkdown(alt.text)}</span>
+              </label>
+            </li>
+          `;
+        })
         .join("");
 
       return `
         <article class="question-card" data-index="${question.mixedIndex}">
           <div class="question-header">
-            <h3>Questão ${question.mixedIndex}</h3>
-            <span class="question-origin">ENEM ${question.originalYear} · item ${question.originalIndex}</span>
+            <h3>Questao ${question.mixedIndex}</h3>
+            <span class="question-origin">ENEM ${question.originalYear} - item ${question.originalIndex}</span>
           </div>
           <div class="context">${renderMarkdown(question.context)}</div>
           ${
@@ -109,38 +128,29 @@ function renderQuestions(exam) {
       `;
     })
     .join("");
-}
 
-async function loadYears() {
-  const response = await fetch("/api/years");
-  if (!response.ok) {
-    throw new Error("Não foi possível carregar os anos disponíveis.");
-  }
-  const data = await response.json();
-  state.years = data.years;
-  renderYears();
+  questionsEl.querySelectorAll('input[type="radio"]').forEach((input) => {
+    input.addEventListener("change", (event) => {
+      saveAnswer(event.target.dataset.questionIndex, event.target.value);
+      renderQuestions(exam);
+    });
+  });
 }
 
 async function generateMix(event) {
   event.preventDefault();
 
-  const years = getSelectedYears();
-  const caderno = document.getElementById("caderno").value;
   const language = document.getElementById("language").value;
-
-  if (years.length < 2) {
-    setStatus("Selecione pelo menos 2 anos.", true);
-    return;
-  }
+  const day = Number(daySelect.value);
 
   generateBtn.disabled = true;
-  setStatus("Gerando simulado... isso pode levar alguns segundos na primeira vez.");
+  setStatus("Gerando simulado unico...");
 
   try {
     const response = await fetch("/api/mix", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ years, caderno, language }),
+      body: JSON.stringify({ day, language, studentId: getStudentId() }),
     });
 
     const payload = await response.json();
@@ -150,6 +160,7 @@ async function generateMix(event) {
 
     state.currentExam = payload;
     state.showAnswers = false;
+    loadSavedAnswers(payload.id);
     renderExamMeta(payload);
     renderQuestions(payload);
 
@@ -159,7 +170,7 @@ async function generateMix(event) {
     exportPdfBtn.href = `/api/mix/${payload.id}/pdf`;
     exportPdfBtn.classList.remove("disabled");
 
-    setStatus(`Simulado pronto com ${payload.questions.length} questões.`);
+    setStatus(`Simulado pronto com ${payload.questions.length} questoes.`);
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -176,7 +187,12 @@ function toggleAnswers() {
   renderQuestions(state.currentExam);
 }
 
+function updateLanguageVisibility() {
+  const isDayOne = Number(daySelect.value) === 1;
+  languageField.classList.toggle("hidden", !isDayOne);
+}
+
 mixForm.addEventListener("submit", generateMix);
 toggleAnswersBtn.addEventListener("click", toggleAnswers);
-
-loadYears().catch((error) => setStatus(error.message, true));
+daySelect.addEventListener("change", updateLanguageVisibility);
+updateLanguageVisibility();

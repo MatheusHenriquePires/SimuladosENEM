@@ -1,20 +1,23 @@
 # ENEM Mesclador
 
-Ferramenta para gerar simulados do **1º dia do ENEM** mesclando questões de diferentes anos, com alternância por questão (Q1=2024, Q2=2023, Q3=2022, Q4=2024...).
+Ferramenta para gerar simulados do ENEM mesclando questoes de diferentes anos.
 
 ## Funcionalidades
 
-- Download de provas e gabaritos oficiais do [INEP](https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais/enem/provas-e-gabaritos)
-- Questões de 2009–2023 via [API enem.dev](https://enem.dev)
-- Questões de 2024+ via extração de PDF (`enem` extractor)
+- Geracao aleatoria de simulado por aluno, sorteando anos e caderno a cada nova prova
+- Opcao de simulado do Dia 1 ou Dia 2
+- Marcacao das alternativas no navegador, com respostas salvas por simulado
+- Download de provas e gabaritos oficiais do INEP
+- Questoes de 2009-2023 via API enem.dev
+- Questoes de 2024+ via extracao de PDF (`enem` extractor)
 - Interface web para gerar e estudar simulados
-- Exportação em PDF com gabarito consolidado
+- Exportacao em PDF com gabarito consolidado
 
 ## Requisitos
 
 - Python 3.11+
 
-## Instalação
+## Instalacao
 
 ```bash
 cd c:\Users\OBJETIVO\Documents\Matheus\1
@@ -33,11 +36,11 @@ Acesse: http://localhost:8000
 
 ## API
 
-| Endpoint | Descrição |
+| Endpoint | Descricao |
 |----------|-----------|
-| `GET /api/years` | Lista anos disponíveis |
-| `POST /api/mix` | Gera simulado mesclado |
-| `POST /api/sync/{year}` | Força recarga de um ano |
+| `GET /api/years` | Lista anos disponiveis |
+| `POST /api/mix` | Gera simulado mesclado com dia escolhido, anos e caderno sorteados |
+| `POST /api/sync/{year}` | Forca recarga de um ano |
 | `GET /api/mix/{id}/pdf` | Baixa PDF do simulado |
 
 ### Exemplo
@@ -45,15 +48,15 @@ Acesse: http://localhost:8000
 ```bash
 curl -X POST http://localhost:8000/api/mix \
   -H "Content-Type: application/json" \
-  -d "{\"years\":[2024,2023,2022],\"caderno\":\"azul\",\"language\":\"ingles\"}"
+  -d "{\"day\":1,\"language\":\"ingles\",\"studentId\":\"aluno-demo\"}"
 ```
 
 ## Estrutura
 
-```
-backend/          # FastAPI + serviços
+```text
+backend/          # FastAPI + servicos
 frontend/         # Interface web
-data/cache/       # Cache de questões (gerado automaticamente)
+data/cache/       # Cache de questoes (gerado automaticamente)
 data/pdfs/        # PDFs baixados do INEP
 data/mixes/       # Simulados gerados
 ```
